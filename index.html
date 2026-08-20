@@ -4,16 +4,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Um incrível projeto do Skip</title>
-    <meta name="description" content="Projeto gerado usando Skip (https://goskip.dev)" />
-    <meta name="author" content="Skip (https://goskip.dev)" />
+    <title>Hub — Clínica Canever</title>
+    <meta name="description" content="Painel de gestão de Meta Ads da Clínica Canever." />
     <meta property="og:image" content="/og-image.png" />
   </head>
 
   <body>
     <div id="root"></div>
-    <!-- @skip-protected: Do not remove. Required for app features. -->
-    <script src="https://goskip.dev/skip.js"></script>
+    <!-- O script goskip.dev/skip.js foi removido, como já foi feito no CRM: era
+         ele que injetava o selo "Criado com o Skip" no canto da tela. O hub roda
+         na VPS da clínica, não na plataforma do Skip, então ele não tem função
+         aqui — só carregava código de terceiros em toda visita a um painel com
+         dados de investimento em anúncios. Conferido na prática: com o script
+         bloqueado, login, listagem de campanhas e navegação funcionam igual. -->
     <!-- @skip-protected: Do not remove. App entrypoint. -->
     <script type="module" src="/src/main.tsx"></script>
   </body>
