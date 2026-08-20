@@ -84,19 +84,23 @@ migrate(
         impressions: c.impressions,
         conversions: c.conversions,
         roas: c.roas,
+        // O select `objective` so' aceita awareness|traffic|engagement|leads|
+        // sales|app_promotion (migration 0004). 'conversions' e 'reach' nao
+        // existem — sao nomes da API da Meta, que o meta_ads_sync traduz para
+        // 'sales' e 'awareness'. Aqui a traducao ja' vem feita.
         objective:
           i === 0
-            ? 'conversions'
+            ? 'sales'
             : i === 1
               ? 'traffic'
               : i === 2
                 ? 'sales'
                 : i === 3
-                  ? 'conversions'
-                  : 'reach',
+                  ? 'sales'
+                  : 'awareness',
         start_date: '2026-07-01',
         end_date: '2026-07-31',
-        account_id: acct.get('account_id'),
+        account_id: acct.id, // relacao: espera o id do REGISTRO, nao 'act_...'
         user_id: userId,
       })
       app.save(camp)
@@ -118,7 +122,7 @@ migrate(
         ctr: 1.2 + Math.random() * 0.8,
         cpc: 0.5 + Math.random() * 0.4,
         roas: 1.5 + Math.random() * 3,
-        account_id: acct.get('account_id'),
+        account_id: acct.id, // relacao: espera o id do REGISTRO, nao 'act_...'
         user_id: userId,
       })
       app.save(met)
@@ -161,7 +165,7 @@ migrate(
           impressions_ranking: new Date().toISOString(),
           spend_ranking: new Date().toISOString(),
           conversions_ranking: new Date().toISOString(),
-          account_id: acct.get('account_id'),
+          account_id: acct.id, // relacao: espera o id do REGISTRO, nao 'act_...'
           user_id: userId,
         })
         app.save(adset)
@@ -181,7 +185,7 @@ migrate(
             impressions_ranking: new Date().toISOString(),
             spend_ranking: new Date().toISOString(),
             clicks_ranking: new Date().toISOString(),
-            account_id: acct.get('account_id'),
+            account_id: acct.id, // relacao: espera o id do REGISTRO, nao 'act_...'
             user_id: userId,
           })
           app.save(ad)
