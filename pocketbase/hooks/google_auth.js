@@ -7,6 +7,9 @@ routerAdd(
     const userId = e.auth && e.auth.id
     if (!userId) return e.unauthorizedError('auth required')
 
+    if (typeof $secrets === 'undefined') {
+      return e.json(501, { error: 'Google OAuth nao esta disponivel neste deploy.' })
+    }
     const clientId = $secrets.get('GOOGLE_CLIENT_ID') || ''
     const redirectUri = $secrets.get('GOOGLE_REDIRECT_URI') || ''
 

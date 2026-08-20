@@ -2,6 +2,20 @@
 // Fuso horario: PocketBase normaliza datas pra UTC, entao o Genie respondia
 // 13:45 pra um evento de 10:45 (BRT). Adiciona when_local (label ja no fuso
 // do calendario do usuario) e ensina o agente a usa-lo.
+// O Genie e' definido pelo runtime de IA do goskip (`$ai`), que nao existe no
+// PocketBase puro do deploy proprio. Sem esta protecao a migration lanca
+// "ReferenceError: $ai is not defined", o PocketBase nao sobe e TODAS as
+// migrations seguintes deixam de aplicar. Dentro do goskip nada muda: `$ai`
+// existe e a definicao roda igual.
+function genieDefine(app, spec) {
+  if (typeof $ai === 'undefined') return
+  $ai.agents.define(app, spec)
+}
+function genieDelete(app, slug) {
+  if (typeof $ai === 'undefined') return
+  $ai.agents.delete(app, slug)
+}
+
 migrate(
   (app) => {
     var cal = app.findCollectionByNameOrId('calendar_events')
@@ -10,7 +24,7 @@ migrate(
       app.save(cal)
     }
 
-    $ai.agents.define(app, {
+    genieDefine(app, {
       slug: 'hub-genie',
       name: 'Genie',
       description:

@@ -7,6 +7,15 @@ routerAdd(
   '/backend/v1/genie/chat',
   (e) => {
     try {
+      // Fora do goskip nao existe runtime de IA: `$ai` e as classes SkipAi*
+      // usadas no catch abaixo sao indefinidas. Sem esta saida antecipada o
+      // handler estoura ReferenceError e o front recebe um 500 opaco.
+      if (typeof $ai === 'undefined') {
+        return e.json(503, {
+          error: 'O Genie nao esta disponivel neste deploy (sem runtime de IA).',
+        })
+      }
+
       const body = e.requestInfo().body || {}
       const userId = e.auth && e.auth.id
       if (!userId) return e.unauthorizedError('auth required')

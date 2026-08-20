@@ -8,6 +8,9 @@ routerAdd(
   (e) => {
     const userId = e.auth && e.auth.id
     if (!userId) return e.unauthorizedError('auth required')
+    // `$secrets` e' do goskip. No PocketBase puro ele nao existe, e sem esta
+    // protecao a rota estoura ReferenceError toda vez que a tela Conectar abre.
+    if (typeof $secrets === 'undefined') return e.json(200, { google_configured: false })
     const id = $secrets.get('GOOGLE_CLIENT_ID') || ''
     const secret = $secrets.get('GOOGLE_CLIENT_SECRET') || ''
     const redirect = $secrets.get('GOOGLE_REDIRECT_URI') || ''

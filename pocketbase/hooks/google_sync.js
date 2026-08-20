@@ -6,6 +6,13 @@ routerAdd(
     const userId = e.auth && e.auth.id
     if (!userId) return e.unauthorizedError('auth required')
 
+    // O ChatPanel chama esta rota ao abrir, em toda tela. `$secrets` e' do
+    // goskip; no PocketBase puro ele nao existe e o handler estouraria
+    // ReferenceError a cada abertura de tela. Aqui a resposta e' a mesma de
+    // "sem credencial", que o front ja' sabe tratar.
+    if (typeof $secrets === 'undefined') {
+      return e.json(500, { error: 'Google credentials not configured' })
+    }
     const clientId = $secrets.get('GOOGLE_CLIENT_ID') || ''
     const clientSecret = $secrets.get('GOOGLE_CLIENT_SECRET') || ''
     if (!clientId || !clientSecret) {

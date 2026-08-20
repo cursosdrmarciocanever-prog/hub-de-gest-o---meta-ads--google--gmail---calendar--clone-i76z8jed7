@@ -1,7 +1,21 @@
 /// <reference path="../pb_data/types.d.ts" />
+// O Genie e' definido pelo runtime de IA do goskip (`$ai`), que nao existe no
+// PocketBase puro do deploy proprio. Sem esta protecao a migration lanca
+// "ReferenceError: $ai is not defined", o PocketBase nao sobe e TODAS as
+// migrations seguintes deixam de aplicar. Dentro do goskip nada muda: `$ai`
+// existe e a definicao roda igual.
+function genieDefine(app, spec) {
+  if (typeof $ai === 'undefined') return
+  $ai.agents.define(app, spec)
+}
+function genieDelete(app, slug) {
+  if (typeof $ai === 'undefined') return
+  $ai.agents.delete(app, slug)
+}
+
 migrate(
   (app) => {
-    $ai.agents.define(app, {
+    genieDefine(app, {
       slug: 'hub-genie',
       name: 'Genie',
       description:
@@ -58,6 +72,6 @@ migrate(
     })
   },
   (app) => {
-    $ai.agents.delete(app, 'hub-genie')
+    genieDelete(app, 'hub-genie')
   },
 )
