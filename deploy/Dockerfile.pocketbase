@@ -1,0 +1,36 @@
+# PocketBase self-hosted com as migrations e hooks do hub embarcados.
+# As migrations (pb_migrations) rodam sozinhas no primeiro serve e criam todo
+# o schema + seeds. Os hooks (*.pb.js) sao carregados no boot.
+#
+# ATENCAO: PB_VERSION deve BATER com a versao usada pelo goskip, senao as
+# migrations podem falhar. O CRM — mesmo template, mesmo Skip — roda 0.36.9,
+# entao esse e' o padrao aqui. Confira no rodape do admin do goskip (/_/).
+
+ARG PB_VERSION=0.36.9
+ARG PB_ARCH=linux_amd64
+
+FROM alpine:3.20 AS build
+ARG PB_VERSION
+ARG PB_ARCH
+RUN apk add --no-cache unzip ca-certificates wget
+WORKDIR /pb
+RUN wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_${PB_ARCH}.zip" -O /tmp/pb.zip \
+  && unzip /tmp/pb.zip -d /pb \
+  && rm /tmp/pb.zip
+
+# Migrations JS -> pb_migrations (carregadas automaticamente, em ordem)
+COPY pocketbase/migrations/ /pb/pb_migrations/
+
+# Hooks -> pb_hooks. PocketBase SO carrega arquivos terminados em `.pb.js`,
+# mas no repo eles sao `.js`; renomeamos na copia.
+COPY pocketbase/hooks/ /tmp/hooks/
+RUN mkdir -p /pb/pb_hooks \
+  && for f in /tmp/hooks/*.js; do cp "$f" "/pb/pb_hooks/$(basename "${f%.js}").pb.js"; done \
+  && rm -rf /tmp/hooks
+
+FROM alpine:3.20
+RUN apk add --no-cache ca-certificates
+WORKDIR /pb
+COPY --from=build /pb /pb
+EXPOSE 8090
+CMD ["/pb/pocketbase", "serve", "--http=0.0.0.0:8090"]

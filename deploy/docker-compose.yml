@@ -1,0 +1,69 @@
+# Hub Meta Ads — deploy ISOLADO na VPS (Docker + Traefik).
+#
+#   [Traefik :443] --> [web (nginx)] --serve SPA--> navegador
+#                                    \--proxy /api,/_--> [pocketbase :8090]
+#
+# Molde igual ao do CRM, com UMA diferenca deliberada e critica:
+#
+#   `name: hub` logo abaixo.
+#
+# Sem essa linha o Compose deriva o nome do projeto da PASTA (`deploy`) — que e'
+# exatamente o nome que o CRM ja' usa nesta VPS (containers `deploy-web-1` e
+# `deploy-pocketbase-1`, volume `deploy_pb_data`). Subir o hub sem `name` faria o
+# Compose entender que os containers do CRM sao os do hub: ele os RECRIARIA e o
+# hub passaria a montar o volume de dados do CRM. O CRM sairia do ar e os dois
+# escreveriam no mesmo banco.
+#
+# Com `name: hub`, tudo do hub vira `hub-*` e o volume vira `hub_pb_data`.
+# Isto e' o que garante a regra de isolamento: o pior caso e' "o hub nao
+# funciona", nunca "o CRM parou".
+#
+# Variaveis: copie deploy/.env.example para deploy/.env e ajuste.
+
+name: hub
+
+services:
+  pocketbase:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.pocketbase
+      args:
+        PB_VERSION: ${PB_VERSION:-0.36.9}
+        PB_ARCH: ${PB_ARCH:-linux_amd64}
+    restart: unless-stopped
+    volumes:
+      - pb_data:/pb/pb_data # dados do HUB — volume proprio, separado do CRM
+    networks:
+      - internal
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        # Baked no build do Vite. Mesma origem do proprio site (sem CORS).
+        VITE_POCKETBASE_URL: ${HUB_URL:-https://hub.clinicacanever.com.br}
+    restart: unless-stopped
+    depends_on:
+      - pocketbase
+    networks:
+      - internal
+      - n8n_default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      - traefik.http.routers.hub.rule=Host(`${HUB_HOST:-hub.clinicacanever.com.br}`)
+      - traefik.http.routers.hub.entrypoints=websecure
+      - traefik.http.routers.hub.tls=true
+      # Nesta VPS o certresolver do Traefik chama-se `mytlschallenge`
+      # (conferido em /docker/apps/crm/deploy/.env), nao `letsencrypt`.
+      - traefik.http.routers.hub.tls.certresolver=${CERT_RESOLVER:-mytlschallenge}
+      - traefik.http.services.hub.loadbalancer.server.port=80
+
+networks:
+  internal:
+  n8n_default:
+    external: true # rede ja criada pelo Traefik/n8n na VPS
+
+volumes:
+  pb_data:
