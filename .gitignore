@@ -16,16 +16,6 @@ dev-dist-ssr
 .pnpm-store
 .pnpm
 
-# pods-manager atomic build operations (rename/restore leftovers).
-# AppManager creates these during build (set-aside previous output before
-# running pnpm build, restore on failure). Success path cleans them up;
-# failure paths may leave orphans. Always ignore them in version control +
-# in the sandbox memGit hydration (see ProjectSandbox.hydrate).
-*.bak-*
-*.legacy-bak-*
-*.failed-*
-*.tmp
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -44,7 +34,3 @@ screenshot.png
 
 # Environment variables
 .env*
-!.env
-
-# Linux kernel core dumps (e.g. when oxfmt or pnpm crash)
-core.[0-9]*

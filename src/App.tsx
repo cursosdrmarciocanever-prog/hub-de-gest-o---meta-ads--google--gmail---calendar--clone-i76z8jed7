@@ -1,28 +1,41 @@
-/* Main App Component - Handles routing (using react-router-dom), query client and other providers - use this file to add all routes */
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import Index from './pages/Index'
+import { AuthGate } from '@/components/AuthGate'
+import { FreshnessGate } from '@/components/FreshnessGate'
+import { CommandPalette } from '@/components/CommandPalette'
+import Today from './pages/Today'
+import Dashboard from './pages/Dashboard'
+import Connect from './pages/Connect'
+import Campaigns from './pages/Campaigns'
+import CalendarPage from './pages/Calendar'
+import CampaignDetail from './pages/CampaignDetail'
+import Emails from './pages/Emails'
 import NotFound from './pages/NotFound'
-import Layout from './components/Layout'
-
-// ONLY IMPORT AND RENDER WORKING PAGES, NEVER ADD PLACEHOLDER COMPONENTS OR PAGES IN THIS FILE
-// AVOID REMOVING ANY CONTEXT PROVIDERS FROM THIS FILE (e.g. TooltipProvider, Toaster, Sonner)
 
 const App = () => (
-  <BrowserRouter>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </TooltipProvider>
+  <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
+    <AuthGate>
+      <FreshnessGate>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <CommandPalette />
+          <Routes>
+            <Route path="/" element={<Today />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/connect" element={<Connect />} />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/accounts" element={<Navigate to="/campaigns" replace />} />
+            <Route path="/campaign/:id" element={<CampaignDetail />} />
+            <Route path="/emails" element={<Emails />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </TooltipProvider>
+      </FreshnessGate>
+    </AuthGate>
   </BrowserRouter>
 )
 

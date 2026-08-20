@@ -14,8 +14,6 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: mode === 'development' ? 'dev-dist' : 'dist',
     minify: mode !== 'development',
-    // lightningcss in every mode so dev/QA catches the same CSS errors as prod
-    cssMinify: 'lightningcss',
     sourcemap: mode === 'development',
     rolldownOptions: {
       onwarn(warning, warn) {
