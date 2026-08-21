@@ -55,11 +55,14 @@ export default function Connect() {
   const [token, setToken] = useState('')
   const [accountId, setAccountId] = useState('')
   const [connecting, setConnecting] = useState(false)
-  const [metaConnected, setMetaConnected] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<any>(null)
   const [error, setError] = useState('')
-  const [existingMetaConn, setExistingMetaConn] = useState<any>(null)
+  // Varias contas de anuncio por usuario: o Dr. Marcio tem 5, e a que estava
+  // rodando campanha nao era a primeira. Antes a tela guardava uma conexao so'.
+  const [metaConns, setMetaConns] = useState<any[]>([])
+  const [addingAccount, setAddingAccount] = useState(false)
+  const [syncingId, setSyncingId] = useState('')
   const [chatOpen, setChatOpen] = useState(false)
 
   const [googleConnected, setGoogleConnected] = useState(false)
@@ -74,6 +77,8 @@ export default function Connect() {
   const [copied, setCopied] = useState(false)
   const redirectUri = pb.baseUrl.replace(/\/$/, '') + '/backend/v1/google/callback'
 
+  const metaConnected = metaConns.length > 0
+
   const tab = step <= 3 ? 'meta' : 'google'
   const localStep = step <= 3 ? step : step - 3
   const accent = tab === 'meta' ? '#1877F2' : '#4285F4'
@@ -81,12 +86,8 @@ export default function Connect() {
   useEffect(() => {
     async function init() {
       try {
-        const conns = await pb.collection('meta_connections').getFullList({})
-        if (conns.length > 0) {
-          setExistingMetaConn(conns[0])
-          setMetaConnected(true)
-          setAccountId(conns[0].account_id || '')
-        }
+        const conns = await pb.collection('meta_connections').getFullList({ sort: 'created' })
+        setMetaConns(conns)
       } catch (e) {
         /* ignore */
       }
@@ -139,11 +140,15 @@ export default function Connect() {
         setError(data.error || 'Erro ao conectar')
         return
       }
-      const conns = await pb.collection('meta_connections').getFullList({})
-      setExistingMetaConn(conns[0] || null)
-      setMetaConnected(true)
+      const conns = await pb.collection('meta_connections').getFullList({ sort: 'created' })
+      setMetaConns(conns)
+      const recemAdicionada = accountId
       setToken('')
-      handleMetaSync() // primeira conexão → já sincroniza automaticamente
+      setAccountId('')
+      setAddingAccount(false)
+      // Sincroniza so' a conta recem-adicionada: puxar todas de novo a cada
+      // conexao seria lento e desnecessario.
+      handleMetaSyncOne(recemAdicionada)
     } catch (e: any) {
       setError('Erro: ' + (e.message || ''))
     } finally {
@@ -151,25 +156,38 @@ export default function Connect() {
     }
   }
 
-  const handleMetaSync = async () => {
+  // `contaId` vazio = sincroniza TODAS as contas conectadas (o hook percorre
+  // todas quando o body nao traz account_id).
+  const sincronizar = async (contaId: string) => {
     setSyncing(true)
+    setSyncingId(contaId)
     setSyncResult(null)
     setError('')
     try {
       const resp = await fetch(pb.baseUrl + '/backend/v1/meta-ads/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: pb.authStore.token || '' },
-        body: JSON.stringify({ account_id: accountId }),
+        body: JSON.stringify(contaId ? { account_id: contaId } : {}),
       })
       const data = await resp.json()
       if (resp.ok) setSyncResult(data)
       else setError(data.error || data.message || 'Erro ao sincronizar')
+      // last_sync muda no servidor; recarrega para a lista refletir
+      try {
+        setMetaConns(await pb.collection('meta_connections').getFullList({ sort: 'created' }))
+      } catch {
+        /* ignore */
+      }
     } catch (e: any) {
       setError('Erro: ' + (e.message || ''))
     } finally {
       setSyncing(false)
+      setSyncingId('')
     }
   }
+
+  const handleMetaSync = () => sincronizar('')
+  const handleMetaSyncOne = (contaId: string) => sincronizar(contaId)
 
   const handleGoogleAuth = async () => {
     setGoogleLoading(true)
@@ -231,16 +249,15 @@ export default function Connect() {
     }
   }
 
-  const handleMetaDisconnect = async () => {
+  // Remove SO' a credencial da conta escolhida. As campanhas e metricas ja'
+  // sincronizadas continuam no banco — some o acesso, nao o historico.
+  const handleMetaDisconnect = async (conn: any) => {
     try {
-      if (existingMetaConn) await pb.collection('meta_connections').delete(existingMetaConn.id)
+      await pb.collection('meta_connections').delete(conn.id)
     } catch (e) {
       /* ignore */
     }
-    setMetaConnected(false)
-    setExistingMetaConn(null)
-    setToken('')
-    setAccountId('')
+    setMetaConns((atual) => atual.filter((c: any) => c.id !== conn.id))
   }
 
   const connectedCount = (metaConnected ? 1 : 0) + (googleConnected ? 1 : 0)
@@ -337,7 +354,7 @@ export default function Connect() {
                       {metaConnected ? (
                         <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          {accountId ? 'act_' + accountId : 'Conectado'}
+                          {metaConns.length === 1 ? '1 conta' : metaConns.length + ' contas'}
                         </span>
                       ) : (
                         <span className="text-[11px] text-zinc-400">Não conectado</span>
@@ -348,25 +365,63 @@ export default function Connect() {
                     </p>
                   </div>
                   {metaConnected && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={handleMetaSync}
-                        disabled={syncing}
-                        className="px-3 py-1.5 text-[11px] font-medium text-zinc-600 bg-zinc-50 rounded-lg hover:bg-zinc-100 transition-colors disabled:opacity-50"
-                      >
-                        {syncing ? '...' : 'Sincronizar'}
-                      </button>
-                      <button
-                        onClick={handleMetaDisconnect}
-                        className="px-3 py-1.5 text-[11px] font-medium text-zinc-400 hover:text-red-500 transition-colors"
-                      >
-                        Desconectar
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleMetaSync}
+                      disabled={syncing}
+                      className="px-3 py-1.5 text-[11px] font-medium text-zinc-600 bg-zinc-50 rounded-lg hover:bg-zinc-100 transition-colors disabled:opacity-50 shrink-0"
+                    >
+                      {syncing && !syncingId
+                        ? '...'
+                        : metaConns.length > 1
+                          ? 'Sincronizar todas'
+                          : 'Sincronizar'}
+                    </button>
                   )}
                 </div>
 
-                {!metaConnected && (
+                {/* Uma linha por conta conectada */}
+                {metaConns.map((c: any) => (
+                  <div
+                    key={c.id}
+                    className="border-t border-zinc-100 px-6 py-3 flex items-center gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[13px] text-zinc-800 truncate">
+                        {c.account_name || 'act_' + c.account_id}
+                      </div>
+                      <div className="text-[11px] text-zinc-400 font-mono">
+                        act_{c.account_id}
+                        {c.last_sync ? '' : ' · nunca sincronizada'}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleMetaSyncOne(c.account_id)}
+                      disabled={syncing}
+                      className="px-2.5 py-1 text-[11px] font-medium text-zinc-600 bg-zinc-50 rounded-lg hover:bg-zinc-100 transition-colors disabled:opacity-50 shrink-0"
+                    >
+                      {syncingId === c.account_id ? '...' : 'Sincronizar'}
+                    </button>
+                    <button
+                      onClick={() => handleMetaDisconnect(c)}
+                      className="px-2 py-1 text-[11px] font-medium text-zinc-400 hover:text-red-500 transition-colors shrink-0"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ))}
+
+                {metaConnected && !addingAccount && (
+                  <div className="border-t border-zinc-100 px-6 py-3">
+                    <button
+                      onClick={() => setAddingAccount(true)}
+                      className="text-[12px] text-[#1877F2] font-medium hover:underline"
+                    >
+                      + Adicionar outra conta
+                    </button>
+                  </div>
+                )}
+
+                {(!metaConnected || addingAccount) && (
                   <div className="border-t border-zinc-100 px-6 py-5 space-y-4">
                     <div>
                       <label className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-1.5 block">
@@ -397,8 +452,25 @@ export default function Connect() {
                       disabled={connecting}
                       className="w-full py-2.5 text-[13px] font-medium text-white bg-brand rounded-xl hover:bg-brand-strong transition-colors disabled:opacity-50"
                     >
-                      {connecting ? 'Validando com a Meta...' : 'Conectar Meta Ads'}
+                      {connecting
+                        ? 'Validando com a Meta...'
+                        : metaConnected
+                          ? 'Adicionar conta'
+                          : 'Conectar Meta Ads'}
                     </button>
+                    {addingAccount && (
+                      <button
+                        onClick={() => {
+                          setAddingAccount(false)
+                          setToken('')
+                          setAccountId('')
+                          setError('')
+                        }}
+                        className="w-full text-[12px] text-zinc-400 hover:text-zinc-600 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    )}
                     <button
                       onClick={() => setStep(1)}
                       className="w-full text-[12px] text-[#1877F2] font-medium hover:underline"
