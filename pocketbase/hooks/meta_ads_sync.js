@@ -506,8 +506,29 @@ routerAdd(
           )
         }
 
+        // Normaliza a data para 'AAAA-MM-DD' seja qual for o tipo devolvido pelo
+        // PocketBase (string, types.DateTime, objeto com .string()).
+        //
+        // A versao anterior fazia `(recs[i].get('date') || '').split(' ')[0]`
+        // dentro de um try que engolia o erro. Quando `get` nao devolvia uma
+        // string, a primeira volta do laco lancava, o indice ficava VAZIO e
+        // toda sincronizacao reinseria as metricas do zero. Na pratica os
+        // numeros do painel cresciam a cada sync: R$ 2.428,01 viraram
+        // R$ 4.856,02 em duas sincronizacoes, e R$ 2.887,19 viraram R$ 8.661,57
+        // em tres. Um painel de gestao mentindo para mais e' pior que um
+        // painel vazio, porque parece certo.
+        function dateKeyOf(v) {
+          if (!v) return ''
+          let str
+          if (typeof v === 'string') str = v
+          else if (typeof v.string === 'function') str = v.string()
+          else str = '' + v
+          return String(str).slice(0, 10)
+        }
+
         // métricas existentes indexadas por campaign_id + date, pra upsert sem N queries
         const existingMetrics = {}
+        let indiceOk = true
         try {
           const recs = $app.findRecordsByFilter(
             'daily_metrics',
@@ -518,28 +539,34 @@ routerAdd(
             { acc: accountRecord.id },
           )
           for (let i = 0; i < recs.length; i++) {
-            const cid =
-              typeof recs[i].get('campaign_id') === 'string'
-                ? recs[i].get('campaign_id')
-                : (recs[i].get('campaign_id') || {}).id || ''
-            existingMetrics[cid + '|' + (recs[i].get('date') || '').split(' ')[0]] = recs[i]
+            const rel = recs[i].get('campaign_id')
+            const cid = typeof rel === 'string' ? rel : (rel || {}).id || ''
+            const dk = dateKeyOf(recs[i].get('date'))
+            if (cid && dk) existingMetrics[cid + '|' + dk] = recs[i]
           }
+          // Ha registros mas o indice saiu vazio => o formato da data mudou.
+          // Nesse caso e' melhor NAO gravar metrica nenhuma do que duplicar
+          // tudo de novo.
+          if (recs.length > 0 && Object.keys(existingMetrics).length === 0) indiceOk = false
         } catch (err) {
-          /* ignore */
+          indiceOk = false
+          console.error('indice anti-duplicata de daily_metrics falhou:', err)
+        }
+        if (!indiceOk) {
+          syncErrors.push(
+            'Metricas diarias NAO atualizadas: o indice anti-duplicata falhou. ' +
+              'Gravar assim duplicaria os numeros.',
+          )
         }
 
-        for (let m = 0; m < dailyRows.length; m++) {
+        for (let m = 0; indiceOk && m < dailyRows.length; m++) {
           const ins = dailyRows[m]
           const dateKey = ins.date_start
           const campRecId = metaCampToRec[ins.campaign_id]
           if (!dateKey || !campRecId) continue
           if (dateKey > lastActivity) lastActivity = dateKey
-          if (existingMetrics[campRecId + '|' + dateKey]) continue
 
-          const metric = new Record(metricsCol, {
-            date: dateKey,
-            campaign_id: campRecId,
-            level: 'campaign',
+          const valores = {
             spend: num(ins.spend),
             conversions: int(ins.conversions),
             ctr: num(ins.ctr),
@@ -550,9 +577,48 @@ routerAdd(
             cpm: num(ins.cpm),
             purchase_roas: num(ins.purchase_roas),
             cost_per_conversion: num(ins.cost_per_conversion),
+          }
+
+          const jaExiste = existingMetrics[campRecId + '|' + dateKey]
+          if (jaExiste) {
+            // ATUALIZA em vez de pular. Antes o `continue` congelava o dia:
+            // a metrica do dia corrente e' parcial quando sincronizada de
+            // manha e nunca mais era corrigida.
+            let mudou = false
+            for (const k in valores) {
+              if (jaExiste.get(k) !== valores[k]) {
+                jaExiste.set(k, valores[k])
+                mudou = true
+              }
+            }
+            if (mudou) {
+              try {
+                $app.save(jaExiste)
+              } catch (err) {
+                /* pula métrica ruim */
+              }
+            }
+            continue
+          }
+
+          const metric = new Record(metricsCol, {
+            date: dateKey,
+            campaign_id: campRecId,
+            level: 'campaign',
+            spend: valores.spend,
+            conversions: valores.conversions,
+            ctr: valores.ctr,
+            impressions: valores.impressions,
+            reach: valores.reach,
+            clicks: valores.clicks,
+            cpc: valores.cpc,
+            cpm: valores.cpm,
+            purchase_roas: valores.purchase_roas,
+            cost_per_conversion: valores.cost_per_conversion,
           })
           try {
             $app.save(metric)
+            existingMetrics[campRecId + '|' + dateKey] = metric
             syncCount.metrics++
           } catch (err) {
             /* pula métrica ruim */
